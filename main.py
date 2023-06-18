@@ -52,12 +52,29 @@ print("Fitting will be using {int_gpu_count:d} GPU(s).".format(
     int_gpu_count = len(tf.config.list_physical_devices('GPU'))))
 print()
 
-def fetch_data():
+def fetch_data(bool_digits_true_fashion_false = True) :
     ###########################################################################
     # Load raw data.
     print("Loading data into training/testing raw subsets... ", end="")
-    (x_train, y_train), (x_test, y_test) = \
-        tf.keras.datasets.mnist.load_data()
+    if bool_digits_true_fashion_false :
+        (x_train, y_train), (x_test, y_test) = \
+            tf.keras.datasets.mnist.load_data()
+        lst_str_classes_labels = [str(i) for i in range(10)]
+    else :
+        (x_train, y_train), (x_test, y_test) = \
+            tf.keras.datasets.fashion_mnist.load_data()
+        lst_str_classes_labels = [
+            'T-shirt/top',
+            'Trouser',
+            'Pullover',
+            'Dress',
+            'Coat',
+            'Sandal',
+            'Shirt',
+            'Sneaker',
+            'Bag',
+            'Ankle boot',
+            ]
     print("done.")
     assert(len(y_train.shape) == 1)
     assert(y_train.shape[0] == x_train.shape[0])
@@ -95,9 +112,10 @@ def fetch_data():
     print("y_test shape: {}.".format(str(y_test.shape)))
     print()
 
-    return ((x_train, y_train), (x_test, y_test))
+    return (lst_str_classes_labels, (x_train, y_train), (x_test, y_test))
 
-((x_train, y_train), (x_test, y_test)) = fetch_data()
+(lst_str_classes_labels, (x_train, y_train), (x_test, y_test)) = fetch_data(
+    bool_digits_true_fashion_false = False)
 
 
 ###############################################################################
@@ -116,17 +134,31 @@ def build_model(input_shape, int_model_type = 0):
                 filters=8,
                 kernel_size=(3,3),
                 strides=(1,1),
-                padding="same",
+                padding="same", # 'valid'
                 activation="relu",
                 kernel_initializer='random_uniform',
                 bias_initializer="zeros",
-                input_shape=input_shape,
-            ),
+                input_shape=input_shape, # (None, 28, 28, 1)
+                # "channels_first" or "channels_last" (dft) for "input_shape"
+                data_format="channels_last",
+            ), # (None, W, H, 8);
+            # Conv2D: W = floor((w + 2*p - f) / s + 1)
+            #         H = floor((h + 2*p - f) / s + 1)
+            # padding="same":
+            # Conv2D: W = floor((28 + 2*1 - 3) / 1 + 1)
+            #         H = floor((28 + 2*1 - 3) / 1 + 1)
+            # padding="valid":
+            # Conv2D: W = floor((28 + 2*0 - 3) / 1 + 1)
+            #         H = floor((28 + 2*0 - 3) / 1 + 1)
             tf.keras.layers.MaxPooling2D(
                 pool_size=(2,2),
-                strides=None, # aka (2,2), the same as pool_size
+                strides=None, # If None, it will default to pool_size.
                 padding='valid',
-            ),
+            ), # (None, W, H, 8);
+            # MaxPool2D: W = floor((w - f) / s + 1)
+            #            H = floor((h - f) / s + 1)
+            # MaxPool2D: W = floor((28 - 2) / 2 + 1);
+            #            H = floor((28 - 2) / 2 + 1)
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(
                 units=64,
@@ -149,29 +181,47 @@ def build_model(input_shape, int_model_type = 0):
                 activation="softmax",
                 kernel_initializer=custom_kernel_initializer_normal,
                 ),
+            # The above layer can be split into three layers:
+            #
+            # tf.keras.layers.Dense(units=10, activation='linear'),
+            # tf.keras.layers.BatchNormalization(),
+            # tf.keras.layers.Softmax(),
+            #
+            #Dense(units=1,activation="linear"), # See "from_logits=True" in model.compile!
         ])
     elif int_model_type == 1 :
         model = tf.keras.models.Sequential([
             tf.keras.layers.Flatten(input_shape=input_shape),
-            tf.keras.layers.Dense(64, activation='tanh'),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(10, activation='softmax'),
+            tf.keras.layers.Dense(units=64, activation='tanh'),
+            tf.keras.layers.Dense(units=64, activation='relu'), # 'elu'
+            tf.keras.layers.Dense(units=10, activation='softmax'),
+            # Use activation='softmax' for units = 1 in the last layer
         ])
     else :
         model = None
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), # "adam"
-        #optimizer="adam",
+        #optimizer='sgd', # "adam", "rmsprop", "adadelta"
+        #optimizer=tf.keras.optimizers.SGD(learning_rate=0.001,momentum=0.9,
+        #                                  nesterov=True),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-        #loss="sparse_categorical_crossentropy", # for integer categories
+        #loss="sparse_categorical_crossentropy", # y_train: (num_samples, ) # sparse representation vector (integer enumerations)
+        #loss='binary_crossentropy',
+        #loss="mean_squared_error",
+        #loss="categorical_crossentropy", # y_train: (num_samples, num_classes) # one-hot vector (0's or 1's)
+        #loss=tf.keras.losses.BinaryCrossentropy(from_logits=True), # See activation="linear"
         metrics= [
             custom_metric_accuracy,
             tf.keras.metrics.SparseCategoricalAccuracy(), # "accuracy" integers
             # tf.keras.metrics.BinaryAccuracy(threshold=0.5), # 'accuracy' binary integers
             # tf.keras.metrics.CategoricalAccuracy(), # 'accuracy'; one-hot
             # tf.keras.metrics.SparseTopKCategoricalAccuracy(k=3); # "top_k_categorical_accuracy"; one-hot
+            # tf.keras.metrics.MeanAbsoluteError() # for regressions!
             ],
+        #metrics=["accuracy", "mae",],
+        # Metrics aree computed for each epoch during training along with
+        # evaluation of the loss function on the training data.
         run_eagerly=True,
     )
     # When you pass the strings "accuracy" or "acc", we convert this to one of
@@ -187,6 +237,10 @@ def build_model(input_shape, int_model_type = 0):
 print("Building model with input shape {}... ".format(x_train[0].shape), end="")
 model = build_model(x_train[0].shape)
 print("done.")
+#print(model.optimizer)
+#print(model.loss)
+#print(model.compiled_metrics)
+#print(model.compiled_metrics._metrics)
 print()
 
 
@@ -312,14 +366,17 @@ def plot_predicted_distributions(
         axes[i, 0].imshow(np.squeeze(x_test_rnd_sample))
         axes[i, 0].get_xaxis().set_visible(False)
         axes[i, 0].get_yaxis().set_visible(False)
-        axes[i, 0].text(11., -1.6, 'Label {:d}'.format(y_test_rnd_sample_act))
+        axes[i, 0].text(11., -1.6, 'Label #{:d}: {}'.format(
+            y_test_rnd_sample_act,
+            lst_str_classes_labels[y_test_rnd_sample_act]))
         axes[i, 1].bar(np.arange(
             len(y_test_rnd_sample_pred)),
             y_test_rnd_sample_pred)
         axes[i, 1].set_xticks(np.arange(len(y_test_rnd_sample_pred)))
+        int_best_choice_ind = np.argmax(y_test_rnd_sample_pred)
         axes[i, 1].set_title(
-            "Predicted distribution. Most likely value: {:d}.".format(
-                np.argmax(y_test_rnd_sample_pred)))
+            "Predicted distribution. Most likely value: {}.".format(
+                lst_str_classes_labels[int_best_choice_ind]))
     plt.savefig(
         "selected_images_predictions.pdf",
         format="pdf",
@@ -333,6 +390,37 @@ plot_predicted_distributions(
 print("done.")
 print()
 
+
+###############################################################################
+# Choose a random sample and predict its class label
+print("Selecting random sample... ", end="")
+rand_generator = np.random.default_rng(12345)
+inx_test_rnd_sample = rand_generator.choice(x_test.shape[0])
+# inx_test_rnd_sample = 30
+x_test_rnd_sample = x_test[inx_test_rnd_sample]
+y_test_rnd_sample_act = y_test[inx_test_rnd_sample]
+print("done.")
+print("Selected random sample with index {:d}.".format(inx_test_rnd_sample))
+print("Displaying random sample... ", end="")
+fig, axes = plt.subplots(1, 1, figsize=(5, 5))
+plt.imshow(x_test_rnd_sample)
+plt.show()
+print("done.")
+print("The shape of the random sample: {}.".format(
+    str(x_test_rnd_sample.shape)))
+x_test_rnd_sample_batch = x_test_rnd_sample[np.newaxis,...]
+print("The shape of the random sample batch: {}.".format(
+    str(x_test_rnd_sample_batch.shape)))
+print("Predicting lable of the random sample:")
+y_test_rnd_sample_pred = model.predict(x_test_rnd_sample_batch)
+print("Probabilities of predicted labels of the random sample:")
+print(y_test_rnd_sample_pred)
+int_max_prob_idx = np.argmax(y_test_rnd_sample_pred)
+print("The index of the biggest probability: {:d}".format(
+    int_max_prob_idx))
+print(f"Actual class: {lst_str_classes_labels[y_test_rnd_sample_act]}")
+print(f"Predicted class: {lst_str_classes_labels[int_max_prob_idx]}")
+print()
 
 if True :
     ###########################################################################
