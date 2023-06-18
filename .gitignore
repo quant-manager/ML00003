@@ -163,4 +163,4 @@ model_training_accuracy_by_epoch.pdf
 model_training_loss_by_epoch.pdf
 selected_images_predictions.pdf
 model_training_custom_by_epoch.pdf
-
+model_params_histograms.pdf

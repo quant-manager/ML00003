@@ -102,10 +102,12 @@ def fetch_data():
 
 ###############################################################################
 # Build model
-def my_custom_accuracy(y_true, y_pred):
+def custom_metric_accuracy(y_true, y_pred):
     return K.mean(K.equal(tf.cast(x=tf.squeeze(y_true), dtype="int64"),
                           K.argmax(y_pred)))
 
+def custom_kernel_initializer_normal(shape, dtype=None) :
+    return K.random_normal(shape, dtype=dtype)
 
 def build_model(input_shape, int_model_type = 0):
     if int_model_type == 0 :
@@ -116,6 +118,8 @@ def build_model(input_shape, int_model_type = 0):
                 strides=(1,1),
                 padding="same",
                 activation="relu",
+                kernel_initializer='random_uniform',
+                bias_initializer="zeros",
                 input_shape=input_shape,
             ),
             tf.keras.layers.MaxPooling2D(
@@ -124,9 +128,27 @@ def build_model(input_shape, int_model_type = 0):
                 padding='valid',
             ),
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(units=64, activation="relu",),
-            tf.keras.layers.Dense(units=64, activation="relu",),
-            tf.keras.layers.Dense(units=10, activation="softmax",),
+            tf.keras.layers.Dense(
+                units=64,
+                activation="relu",
+                kernel_initializer=tf.keras.initializers.RandomNormal(
+                    mean=0.0, stddev=0.06), 
+                bias_initializer=tf.keras.initializers.Constant(
+                    value=0.1), 
+                ),
+            tf.keras.layers.Dense(
+                units=64,
+                activation="relu",
+                kernel_initializer=tf.keras.initializers.Orthogonal(
+                    gain=1.1, seed=None), 
+                bias_initializer=tf.keras.initializers.Constant(
+                    value=0.3),
+                ),
+            tf.keras.layers.Dense(
+                units=10,
+                activation="softmax",
+                kernel_initializer=custom_kernel_initializer_normal,
+                ),
         ])
     elif int_model_type == 1 :
         model = tf.keras.models.Sequential([
@@ -144,7 +166,7 @@ def build_model(input_shape, int_model_type = 0):
         loss=tf.keras.losses.SparseCategoricalCrossentropy(),
         #loss="sparse_categorical_crossentropy", # for integer categories
         metrics= [
-            my_custom_accuracy,
+            custom_metric_accuracy,
             tf.keras.metrics.SparseCategoricalAccuracy(), # "accuracy" integers
             # tf.keras.metrics.BinaryAccuracy(threshold=0.5), # 'accuracy' binary integers
             # tf.keras.metrics.CategoricalAccuracy(), # 'accuracy'; one-hot
@@ -169,12 +191,39 @@ print()
 
 
 ###############################################################################
+# Access podel paramaters and plot their distributions as histograms.
+def plot_hist_model_params(model) :
+
+    # Exclude layers which do not have weights (e.g. Flatten, MaxPooling2D)
+    weight_layers = [layer for layer in model.layers
+                     if len(layer.weights) > 0]
+    num_weight_layers_to_plot = len(weight_layers)
+
+    fig, axes = plt.subplots(num_weight_layers_to_plot, 2, figsize=(13,17))
+    fig.subplots_adjust(hspace=0.5, wspace=0.5)
+    for i, weight_layer in enumerate(weight_layers):
+        for j in [0, 1]:
+            axes[i, j].hist(
+                weight_layer.weights[j].numpy().flatten(),
+                align='left')
+            axes[i, j].set_title(weight_layer.weights[j].name)
+    plt.savefig("model_params_histograms.pdf",
+                format="pdf", bbox_inches="tight")
+
+print("Generating histograms with model parameters...", end="")
+plot_hist_model_params(model=model)
+print("done.")
+print()
+
+
+###############################################################################
 # Train model
 print("Training model:")
 history = model.fit(x=x_train, y=y_train, epochs=5, batch_size=32, verbose=2)
 print()
 print(model.summary())
 print()
+
 
 ###############################################################################
 # Plot model training history
@@ -199,7 +248,7 @@ def plot_model_training_history(history) :
                 format="pdf", bbox_inches="tight")
 
     acc_plot = df_history.plot(
-        y="my_custom_accuracy",
+        y="custom_metric_accuracy",
         title="Custom accuracy versus Epochs",
         legend=False)
     acc_plot.set(xlabel="Epochs", ylabel="Custom accuracy")
@@ -208,7 +257,7 @@ def plot_model_training_history(history) :
 
 
 print("Generating plots with model training histories...", end="")
-plot_model_training_history(history)
+plot_model_training_history(history = history)
 print("done.")
 print()
 
@@ -243,6 +292,7 @@ print("Predicting for {:d} randomly selected samples.".format(num_samples))
     generate_random_subset(num_samples = num_samples)
 y_test_rnd_subset_pred = model.predict(x_test_rnd_subset)
 print()
+
 
 ###############################################################################
 # Generating plots with predicted results.
@@ -284,8 +334,13 @@ print("done.")
 print()
 
 
-if False :
-    print("Sample metrics:")
+if True :
+    ###########################################################################
+    # Stylized examples that show how to compute customized metrics
+    # See also:
+    # https://medium.com/analytics-vidhya/custom-metrics-for-keras-tensorflow-ae7036654e05
+
+    print("Extras: compute Accuracy metric with stylized examples:")
     # binary classification sigmoid accuracy (binary integer)
     # BinaryAccuracy or SparseCategoricalAccuracy (generalized case)
     y_true = tf.constant([0.0, 1.0, 1.0])
@@ -295,8 +350,8 @@ if False :
 
     # binary classification softmax accuracy (binary one-hot)
     # CategoricalAccuracy (special binary case)
-    y_true = tf.constant([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0],  [0.0,  1.0]])
-    y_pred = tf.constant([[0.4, 0.6], [0.3, 0.7], [0.05, 0.95],[0.33, 0.67]])
+    y_true = tf.constant([[1.0, 0.0], [0.0, 1.0], [0.0, 1.0],])
+    y_pred = tf.constant([[0.6, 0.4], [0.2, 0.8], [0.7, 0.3],])
     accuracy = K.mean(K.equal(y_true, K.round(y_pred)))
     print(accuracy.numpy())
 
