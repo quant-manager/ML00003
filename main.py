@@ -26,11 +26,12 @@
 # Load packages
 
 import os
-import sys
+# import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # drop NUMA warnings from TF
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import tensorflow.keras.backend as K
 import matplotlib.pyplot as plt
 
 
@@ -101,33 +102,55 @@ def fetch_data():
 
 ###############################################################################
 # Build model
-def build_model(input_shape):
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(
-            filters=8,
-            kernel_size=(3,3),
-            strides=(1,1),
-            padding="same",
-            activation="relu",
-            input_shape=input_shape,
-        ),
-        tf.keras.layers.MaxPooling2D(
-            pool_size=(2,2),
-            strides=None, # aka (2,2), the same as pool_size
-            padding='valid',
-        ),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(units=64, activation="relu",),
-        tf.keras.layers.Dense(units=64, activation="relu",),
-        tf.keras.layers.Dense(units=10, activation="softmax",),
-    ])
+def my_custom_accuracy(y_true, y_pred):
+    return K.mean(K.equal(tf.cast(x=tf.squeeze(y_true), dtype="int64"),
+                          K.argmax(y_pred)))
+
+
+def build_model(input_shape, int_model_type = 0):
+    if int_model_type == 0 :
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Conv2D(
+                filters=8,
+                kernel_size=(3,3),
+                strides=(1,1),
+                padding="same",
+                activation="relu",
+                input_shape=input_shape,
+            ),
+            tf.keras.layers.MaxPooling2D(
+                pool_size=(2,2),
+                strides=None, # aka (2,2), the same as pool_size
+                padding='valid',
+            ),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(units=64, activation="relu",),
+            tf.keras.layers.Dense(units=64, activation="relu",),
+            tf.keras.layers.Dense(units=10, activation="softmax",),
+        ])
+    elif int_model_type == 1 :
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Flatten(input_shape=input_shape),
+            tf.keras.layers.Dense(64, activation='tanh'),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(10, activation='softmax'),
+        ])
+    else :
+        model = None
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), # "adam"
+        #optimizer="adam",
         loss=tf.keras.losses.SparseCategoricalCrossentropy(),
         #loss="sparse_categorical_crossentropy", # for integer categories
-        metrics= [tf.keras.metrics.SparseCategoricalAccuracy()],
-        #metrics= ["accuracy"],
+        metrics= [
+            my_custom_accuracy,
+            tf.keras.metrics.SparseCategoricalAccuracy(), # "accuracy" integers
+            # tf.keras.metrics.BinaryAccuracy(threshold=0.5), # 'accuracy' binary integers
+            # tf.keras.metrics.CategoricalAccuracy(), # 'accuracy'; one-hot
+            # tf.keras.metrics.SparseTopKCategoricalAccuracy(k=3); # "top_k_categorical_accuracy"; one-hot
+            ],
+        run_eagerly=True,
     )
     # When you pass the strings "accuracy" or "acc", we convert this to one of
     # 1. tf.keras.metrics.BinaryAccuracy,
@@ -156,14 +179,9 @@ print()
 ###############################################################################
 # Plot model training history
 def plot_model_training_history(history) :
+
     df_history = pd.DataFrame(history.history)
-    acc_plot = df_history.plot(
-        y="sparse_categorical_accuracy", # "accuracy"
-        title="Accuracy versus Epochs",
-        legend=False)
-    acc_plot.set(xlabel="Epochs", ylabel="Accuracy")
-    plt.savefig("model_training_accuracy_by_epoch.pdf",
-                format="pdf", bbox_inches="tight")
+
     acc_plot = df_history.plot(
         y="loss",
         title = "Loss versus Epochs",
@@ -171,6 +189,23 @@ def plot_model_training_history(history) :
     acc_plot.set(xlabel="Epochs", ylabel="Loss")
     plt.savefig("model_training_loss_by_epoch.pdf",
                 format="pdf", bbox_inches="tight")
+
+    acc_plot = df_history.plot(
+        y="sparse_categorical_accuracy", # "accuracy"
+        title="Accuracy versus Epochs",
+        legend=False)
+    acc_plot.set(xlabel="Epochs", ylabel="Accuracy")
+    plt.savefig("model_training_accuracy_by_epoch.pdf",
+                format="pdf", bbox_inches="tight")
+
+    acc_plot = df_history.plot(
+        y="my_custom_accuracy",
+        title="Custom accuracy versus Epochs",
+        legend=False)
+    acc_plot.set(xlabel="Epochs", ylabel="Custom accuracy")
+    plt.savefig("model_training_custom_by_epoch.pdf",
+                format="pdf", bbox_inches="tight")
+
 
 print("Generating plots with model training histories...", end="")
 plot_model_training_history(history)
@@ -181,12 +216,14 @@ print()
 ###############################################################################
 # Evaluate model.
 print("Evaluating model on testing set...", end="")
-loss_test, accuracy_test = model.evaluate(x_test, y_test)
+loss_test, custom_metric_test, accuracy_test = model.evaluate(x_test, y_test)
 print("done.")
 print("Test loss: {loss_test:.4f}".format(
     loss_test=loss_test))
 print("Test accuracy: {accuracy_test:.4f}".format(
     accuracy_test=accuracy_test))
+print("Test custom accuracy metric: {custom_metric_test:.4f}".format(
+    custom_metric_test=custom_metric_test))
 print()
 
 
@@ -245,3 +282,49 @@ plot_predicted_distributions(
     y_test_rnd_subset_pred)
 print("done.")
 print()
+
+
+if False :
+    print("Sample metrics:")
+    # binary classification sigmoid accuracy (binary integer)
+    # BinaryAccuracy or SparseCategoricalAccuracy (generalized case)
+    y_true = tf.constant([0.0, 1.0, 1.0])
+    y_pred = tf.constant([0.4, 0.8, 0.3])
+    accuracy = K.mean(K.equal(y_true, K.round(y_pred)))
+    print(accuracy.numpy())
+
+    # binary classification softmax accuracy (binary one-hot)
+    # CategoricalAccuracy (special binary case)
+    y_true = tf.constant([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0],  [0.0,  1.0]])
+    y_pred = tf.constant([[0.4, 0.6], [0.3, 0.7], [0.05, 0.95],[0.33, 0.67]])
+    accuracy = K.mean(K.equal(y_true, K.round(y_pred)))
+    print(accuracy.numpy())
+
+    # multiclass classification argmax accuracy (multiclass one-hot)
+    # CategoricalAccuracy
+    y_true = tf.constant([
+        [0.0, 1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0]])
+    y_pred = tf.constant([
+        [0.4, 0.6, 0.0, 0.0],
+        [0.3, 0.2, 0.1, 0.4],
+        [0.05, 0.35, 0.5, 0.1]])
+    accuracy = K.mean(K.equal(
+        K.argmax(y_true, axis=-1),
+        K.argmax(y_pred, axis=-1)))
+    print(accuracy.numpy())
+
+    # multiclass classification argmax accuracy (multiclass integer vs one-hot)
+    y_true = tf.constant([
+        [1.0],
+        [0.0],
+        [2.0]])
+    y_pred = tf.constant([
+        [0.4, 0.6, 0.0, 0.0],
+        [0.3, 0.2, 0.1, 0.4],
+        [0.05, 0.35, 0.5, 0.1]])
+    accuracy = K.mean(K.equal(
+        tf.cast(x=tf.squeeze(y_true), dtype="int64"),
+        K.argmax(y_pred)))
+    print(accuracy.numpy())
