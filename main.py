@@ -282,7 +282,8 @@ class CStopModelTrainingCallback(tf.keras.callbacks.Callback):
     def __init__(self, flt_min_train_accuracy) :
         self._flt_min_train_accuracy = flt_min_train_accuracy
     def on_epoch_end(self, epoch, logs={}) :
-        if(logs.get('sparse_categorical_accuracy') >=
+        if(logs.get('sparse_categorical_accuracy') is not None and
+           logs.get('sparse_categorical_accuracy') >=
            self._flt_min_train_accuracy) :
           self.model.stop_training = True
 
