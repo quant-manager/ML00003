@@ -197,6 +197,11 @@ def build_model(input_shape, int_model_type = 0):
             tf.keras.layers.Dense(units=10, activation='softmax'),
             # Use activation='softmax' for units = 1 in the last layer
         ])
+    elif int_model_type == 2 :
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Flatten(input_shape=input_shape),
+            tf.keras.layers.Dense(units=128, activation=tf.nn.relu),
+            tf.keras.layers.Dense(units=10, activation=tf.nn.softmax)])
     else :
         model = None
 
@@ -222,7 +227,7 @@ def build_model(input_shape, int_model_type = 0):
         #metrics=["accuracy", "mae",],
         # Metrics aree computed for each epoch during training along with
         # evaluation of the loss function on the training data.
-        run_eagerly=True,
+        # run_eagerly=True, # makes the run slower!!!
     )
     # When you pass the strings "accuracy" or "acc", we convert this to one of
     # 1. tf.keras.metrics.BinaryAccuracy,
@@ -400,6 +405,8 @@ inx_test_rnd_sample = rand_generator.choice(x_test.shape[0])
 x_test_rnd_sample = x_test[inx_test_rnd_sample]
 y_test_rnd_sample_act = y_test[inx_test_rnd_sample]
 print("done.")
+np.set_printoptions(linewidth=320)
+print(f'Pixel array:\n {(np.round((x_test_rnd_sample*255)[:,:,0])).astype(int)}')
 print("Selected random sample with index {:d}.".format(inx_test_rnd_sample))
 print("Displaying random sample... ", end="")
 fig, axes = plt.subplots(1, 1, figsize=(5, 5))
@@ -414,12 +421,14 @@ print("The shape of the random sample batch: {}.".format(
 print("Predicting lable of the random sample:")
 y_test_rnd_sample_pred = model.predict(x_test_rnd_sample_batch)
 print("Probabilities of predicted labels of the random sample:")
-print(y_test_rnd_sample_pred)
+print(np.round(y_test_rnd_sample_pred,4))
 int_max_prob_idx = np.argmax(y_test_rnd_sample_pred)
 print("The index of the biggest probability: {:d}".format(
     int_max_prob_idx))
-print(f"Actual class: {lst_str_classes_labels[y_test_rnd_sample_act]}")
-print(f"Predicted class: {lst_str_classes_labels[int_max_prob_idx]}")
+print(f"Actual class index: {y_test_rnd_sample_act}")
+print(f"Actual class name: {lst_str_classes_labels[y_test_rnd_sample_act]}")
+print(f"Predicted class index: {int_max_prob_idx}")
+print(f"Predicted class name: {lst_str_classes_labels[int_max_prob_idx]}")
 print()
 
 if True :
