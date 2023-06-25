@@ -277,8 +277,25 @@ print()
 
 ###############################################################################
 # Train model
+
+class CStopModelTrainingCallback(tf.keras.callbacks.Callback):
+    def __init__(self, flt_min_train_accuracy) :
+        self._flt_min_train_accuracy = flt_min_train_accuracy
+    def on_epoch_end(self, epoch, logs={}) :
+        if(logs.get('sparse_categorical_accuracy') >=
+           self._flt_min_train_accuracy) :
+          self.model.stop_training = True
+
 print("Training model:")
-history = model.fit(x=x_train, y=y_train, epochs=5, batch_size=32, verbose=2)
+history = model.fit(
+    x=x_train,
+    y=y_train,
+    epochs=10,
+    batch_size=32,
+    verbose=2,
+    callbacks=[CStopModelTrainingCallback(
+        flt_min_train_accuracy = 0.93)]
+    )
 print()
 print(model.summary())
 print()
