@@ -131,7 +131,7 @@ def build_model(input_shape, int_model_type = 0):
     if int_model_type == 0 :
         model = tf.keras.models.Sequential([
             tf.keras.layers.Conv2D(
-                filters=8,
+                filters=32,
                 kernel_size=(3,3),
                 strides=(1,1),
                 padding="same", # 'valid'
@@ -141,7 +141,7 @@ def build_model(input_shape, int_model_type = 0):
                 input_shape=input_shape, # (None, 28, 28, 1)
                 # "channels_first" or "channels_last" (dft) for "input_shape"
                 data_format="channels_last",
-            ), # (None, W, H, 8);
+            ), # (None, W, H, 32);
             # Conv2D: W = floor((w + 2*p - f) / s + 1)
             #         H = floor((h + 2*p - f) / s + 1)
             # padding="same":
@@ -154,11 +154,28 @@ def build_model(input_shape, int_model_type = 0):
                 pool_size=(2,2),
                 strides=None, # If None, it will default to pool_size.
                 padding='valid',
-            ), # (None, W, H, 8);
+            ), # (None, W, H, 32);
             # MaxPool2D: W = floor((w - f) / s + 1)
             #            H = floor((h - f) / s + 1)
             # MaxPool2D: W = floor((28 - 2) / 2 + 1);
             #            H = floor((28 - 2) / 2 + 1)
+            tf.keras.layers.Conv2D(
+                filters=32,
+                kernel_size=(3,3),
+                strides=(1,1),
+                padding="same", # 'valid'
+                activation="relu",
+                kernel_initializer='random_uniform',
+                bias_initializer="zeros",
+                input_shape=input_shape, # (None, 28, 28, 1)
+                # "channels_first" or "channels_last" (dft) for "input_shape"
+                data_format="channels_last",
+            ), # (None, W, H, 32);
+            tf.keras.layers.MaxPooling2D(
+                pool_size=(2,2),
+                strides=None, # If None, it will default to pool_size.
+                padding='valid',
+            ), # (None, W, H, 32);
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(
                 units=64,
@@ -448,6 +465,52 @@ print(f"Actual class name: {lst_str_classes_labels[y_test_rnd_sample_act]}")
 print(f"Predicted class index: {int_max_prob_idx}")
 print(f"Predicted class name: {lst_str_classes_labels[int_max_prob_idx]}")
 print()
+
+
+###############################################################################
+# Plot images from Conv2D and MaxPool2D layers.
+print("Actual class indices (subsample):")
+print(y_test[:32])
+
+IMAGE1_IDX = 2
+IMAGE2_IDX = 3
+IMAGE3_IDX = 5
+IMAGE4_IDX = 15
+IMAGE5_IDX = 24
+
+CONV_FILTER_IDX = 10 # change these from [0; 31]
+
+layer_outputs = [layer.output for layer in model.layers]
+activation_model = tf.keras.models.Model(
+    inputs = model.input, outputs = layer_outputs)
+
+_, ax = plt.subplots(5,4)
+for x in range(0,4):
+  f1 = activation_model.predict(x_test[IMAGE1_IDX].reshape(1, 28, 28, 1),
+                                verbose=False)[x]
+  ax[0,x].imshow(f1[0, : , :, CONV_FILTER_IDX], cmap='inferno')
+  ax[0,x].grid(False)
+  
+  f2 = activation_model.predict(x_test[IMAGE2_IDX].reshape(1, 28, 28, 1),
+                                verbose=False)[x]
+  ax[1,x].imshow(f2[0, : , :, CONV_FILTER_IDX], cmap='inferno')
+  ax[1,x].grid(False)
+  
+  f3 = activation_model.predict(x_test[IMAGE3_IDX].reshape(1, 28, 28, 1),
+                                verbose=False)[x]
+  ax[2,x].imshow(f3[0, : , :, CONV_FILTER_IDX], cmap='inferno')
+  ax[2,x].grid(False)
+
+  f4 = activation_model.predict(x_test[IMAGE4_IDX].reshape(1, 28, 28, 1),
+                                verbose=False)[x]
+  ax[3,x].imshow(f4[0, : , :, CONV_FILTER_IDX], cmap='inferno')
+  ax[3,x].grid(False)
+
+  f5 = activation_model.predict(x_test[IMAGE5_IDX].reshape(1, 28, 28, 1),
+                                verbose=False)[x]
+  ax[4,x].imshow(f5[0, : , :, CONV_FILTER_IDX], cmap='inferno')
+  ax[4,x].grid(False)
+
 
 if True :
     ###########################################################################
